@@ -18,8 +18,6 @@ def generate_preamble(outf, msgs, args, xml):
 # Generated from: ${FILELIST}
 # Note: this file has been auto-generated. DO NOT EDIT
 
-require 'struct'
-require 'array' 
 require 'time'
 require 'json'
 
@@ -41,133 +39,117 @@ MAVLINK_TYPE_DOUBLE   = 10
 
 class X25CRC
     # x25 CRC - based on checksum.h from mavlink library
-    def __init__(self, buf=''):
-        self.crc = 0xffff
-        self.accumulate(buf)
+    attr_accessor :crc
+
+    def initialize(buf = '')
+        @crc = 0xffff
+        accumulate(buf)
     end
 
-    def accumulate(self, buf):
-        '''add in some more bytes'''
-        import array
+    def accumulate(buf):
+        # add in some more bytes
         bytes = array.array('B')
-        if isinstance(buf, array.array):
+        if isinstance(buf, array.array)
             bytes.extend(buf)
-        else:
+        else
             bytes.fromstring(buf)
-        accum = self.crc
+        end
+        accum = @crc
         for b in bytes:
             tmp = b ^ (accum & 0xff)
             tmp = (tmp ^ (tmp<<4)) & 0xFF
             accum = (accum>>8) ^ (tmp<<8) ^ (tmp<<3) ^ (tmp>>4)
             accum = accum & 0xFFFF
-        self.crc = accum
+        end
+        @crc = accum
     end
 end
 
 
 class MAVLink_header
     # MAVLink message header
-    def initialize(self, msgId, mlen=0, seq=0, srcSystem=0, srcComponent=0):
-        self.mlen = mlen
-        self.seq = seq
-        self.srcSystem = srcSystem
-        self.srcComponent = srcComponent
-        self.msgId = msgId
+    attr_accessor :mlen, :seq, :srcSystem, :srcComponent, :msgId
+
+    def initialize(msgId, mlen = 0, seq = 0, srcSystem = 0, srcComponent = 0):
+        @mlen = mlen
+        @seq = seq
+        @srcSystem = srcSystem
+        @srcComponent = srcComponent
+        @msgId = msgId
     end
 
-    def pack(self):
-        return struct.pack('BBBBBB', ${PROTOCOL_MARKER}, self.mlen, self.seq,self.srcSystem, self.srcComponent, self.msgId)
+    def pack
+        return struct.pack('BBBBBB', ${PROTOCOL_MARKER}, @mlen, @seq, @srcSystem, @srcComponent, @msgId)
     end
 end
 
 class MAVLink_message
     # base MAVLink message class
-    def initialize(self, msgId, name)
-        self._header     = MAVLink_header(msgId)
-        self._payload    = None
-        self._msgbuf     = None
-        self._crc        = None
-        self._fieldnames = []
-        self._type       = name
+    attr_accessor :header, :payload, :msgbuf, :crc, :fieldnames, :type
+
+    def initialize(msgId, name)
+        @header = MAVLink_header(msgId)
+        @payload = nil
+        @msgbuf = nil
+        @crc = nil
+        @fieldnames = []
+        @type = name
     end
 
-    def get_msgbuf(self)
-        if isinstance(self._msgbuf, str)
-            return self._msgbuf
+    def msgbuf
+        @msgbuf.class == String ? @msgbuf : @msgbuf.to_s
+    end
+
+    def msgId
+        @header.msgId
+    end
+
+    def srcSystem
+        @header.srcSystem
+    end
+
+    def srcComponent
+        @header.srcComponent
+    end
+
+    def seq
+        @header.seq
+    end
+
+    #def __str__(self)
+    #    ret = '%s {' % self._type
+    #    for a in self._fieldnames
+    #        v = getattr(self, a)
+    #        ret += '%s : %s, ' % (a, v)
+    #    end
+    #    ret = ret[0:-2] + '}'
+    #    return ret            
+    #end
+
+    #def to_dict(self)
+    #    d = dict({})
+    #    d['mavpackettype'] = self._type
+    #    for a in self._fieldnames:
+    #      d[a] = getattr(self, a)
+    #    end
+    #    return d
+    #end
+
+    #def to_json(self)
+    #    return json.dumps(self.to_dict())
+    #end
+
+    def pack(mav, crc_extra, payload)
+        @payload = payload
+        @header  = MAVLink_header(@header.msgId, payload.length, mav.seq, mav.srcSystem, mav.srcComponent)
+        @msgbuf = @header.pack() + @payload
+        crc = X25CRC(@msgbuf[1,@msgbuf.length])
+        if crc_extra # using CRC extra
+            crc.accumulate(crc_extra.chr)
         end
-        return self._msgbuf.tostring()
-    end
-
-    def get_header(self)
-        return self._header
-    end
-
-    def get_payload(self)
-        return self._payload
-    end
-
-    def get_crc(self)
-        return self._crc
-    end
-
-    def get_fieldnames(self)
-        return self._fieldnames
-    end
-
-    def get_type(self)
-        return self._type
-    end
-
-    def get_msgId(self)
-        return self._header.msgId
-    end
-
-    def get_srcSystem(self)
-        return self._header.srcSystem
-    end
-
-    def get_srcComponent(self)
-        return self._header.srcComponent
-    end
-
-    def get_seq(self)
-        return self._header.seq
-    end
-
-    def __str__(self)
-        ret = '%s {' % self._type
-        for a in self._fieldnames
-            v = getattr(self, a)
-            ret += '%s : %s, ' % (a, v)
-        end
-        ret = ret[0:-2] + '}'
-        return ret            
-    end
-
-    def to_dict(self)
-        d = dict({})
-        d['mavpackettype'] = self._type
-        for a in self._fieldnames:
-          d[a] = getattr(self, a)
-        end
-        return d
-    end
-
-    def to_json(self)
-        return json.dumps(self.to_dict())
-    end
-
-    def pack(self, mav, crc_extra, payload)
-        self._payload = payload
-        self._header  = MAVLink_header(self._header.msgId, len(payload), mav.seq, mav.srcSystem, mav.srcComponent)
-        self._msgbuf = self._header.pack() + payload
-        crc = X25CRC(self._msgbuf[1:])
-        if ${crc_extra}: # using CRC extra
-            crc.accumulate(chr(crc_extra))
-        end
-        self._crc = crc.crc
-        self._msgbuf += struct.pack('<H', self._crc)
-        return self._msgbuf
+        @crc = crc.crc
+        @msgbuf += struct.pack('<H', @crc)
+        return @msgbuf
     end
 end
 
@@ -198,24 +180,29 @@ def generate_classes(outf, msgs):
     wrapper = textwrap.TextWrapper()
     wrapper.width = 999
     for m in msgs:
-        outf.write("""
-class MAVLink_%s_message(MAVLink_message):
-    # %s
-    def initialize(self""" % (m.name.lower(), wrapper.fill(m.description.strip())))
-        if len(m.fields) != 0:
-                outf.write(", " + ", ".join(m.fieldnames))
-        outf.write("):\n")
-        outf.write("        MAVLink_message.new(self, MAVLINK_MSG_ID_%s, '%s')\n" % (m.name.upper(), m.name.upper()))
-        if len(m.fieldnames) != 0:
-                outf.write("        self._fieldnames = ['%s']\n" % "', '".join(m.fieldnames))
+        attrs = 'attr_accessor '
         for f in m.fields:
-                outf.write("        self.%s = %s\n" % (f.name, f.name))
+            attrs += ":%s, " % (f.name)
+        attrs = attrs[:-2] + "\n"
+        outf.write("""
+class MAVLink_%s_message < MAVLink_message
+    # %s
+    %s
+    def initialize(""" % (m.name.lower(), wrapper.fill(m.description.strip()),attrs))
+        if len(m.fields) != 0:
+                outf.write(", ".join(m.fieldnames))
+        outf.write(")\n")
+        outf.write("        super(MAVLINK_MSG_ID_%s, '%s')\n" % (m.name.upper(), m.name.upper()))
+        if len(m.fieldnames) != 0:
+                outf.write("        @fieldnames = ['%s']\n" % "', '".join(m.fieldnames))
+        for f in m.fields:
+                outf.write("        @%s = %s\n" % (f.name, f.name))
         outf.write("    end\n")
         outf.write("""
-    def pack(self, mav):
-        return MAVLink_message.pack(self, mav, %u, struct.pack('%s'""" % (m.crc_extra, m.fmtstr))
+    def pack(mav)
+        return super.pack(mav, %u, struct.pack('%s'""" % (m.crc_extra, m.fmtstr))
         if len(m.fields) != 0:
-                outf.write(", self." + ", self.".join(m.ordered_fieldnames))
+                outf.write(", @" + ", @".join(m.ordered_fieldnames))
         outf.write("))\n")
         outf.write("    end\n")
         outf.write("end\n")
@@ -256,6 +243,10 @@ def generate_mavlink_class(outf, msgs, xml):
     t.write(outf, """
 class MAVError < Exception
     # MAVLink error class
+    def __init__(self, msg):
+        Exception.__init__(self, msg)
+        self.message = msg
+    end
 end
 
 class MAVString(str)
@@ -272,211 +263,215 @@ class MAVString(str)
     end
 end
 
-class MAVLink_bad_data(MAVLink_message):
+class MAVLink_bad_data < MAVLink_message
     # a piece of bad data in a mavlink stream
-    def initialize (self, data, reason):
-        MAVLink_message.__init__(self, MAVLINK_MSG_ID_BAD_DATA, 'BAD_DATA')
-        self._fieldnames = ['data', 'reason']
-        self.data = data
-        self.reason = reason
-        self._msgbuf = data
+    attr_accessor :fieldnames, :data, :reason, :msgbuf
+
+    def initialize(data, reason)
+        super(MAVLINK_MSG_ID_BAD_DATA, 'BAD_DATA')
+        @fieldnames = ['data', 'reason']
+        @data = data
+        @reason = reason
+        @msgbuf = data
     end
 
-    def __str__(self):
-        #Override the __str__ function from MAVLink_messages because non-printable characters are common in to be the reason for this message to exist.'''
-        return '%s {%s, data:%s}' % (self._type, self.reason, [('%x' % ord(i) if isinstance(i, str) else '%x' % i) for i in self.data])  
+    def to_s
+        # Override the __str__ function from MAVLink_messages because non-printable characters are common in to be the reason for this message to exist.'''
+        return '%s {%s, data:%s}' % (@type, @reason, [('%x' % ord(i) if isinstance(i, str) else '%x' % i) for i in self.data])  
     end
 end
             
-class MAVLink(object):
+class MAVLink
     # MAVLink protocol handling class
-    def initialize(self, file, srcSystem=0, srcComponent=0):
-        self.seq = 0
-        self.file = file
-        self.srcSystem = srcSystem
-        self.srcComponent = srcComponent
-        self.callback = None
-        self.callback_args = None
-        self.callback_kwargs = None
-        self.send_callback = None
-        self.send_callback_args = None
-        self.send_callback_kwargs = None
-        self.buf = array.array('B')
-        self.expected_length = 6
-        self.have_prefix_error = False
-        self.robust_parsing = False
-        self.protocol_marker = ${protocol_marker}
-        self.little_endian = ${little_endian}
-        self.crc_extra = ${crc_extra}
-        self.sort_fields = ${sort_fields}
-        self.total_packets_sent = 0
-        self.total_bytes_sent = 0
-        self.total_packets_received = 0
-        self.total_bytes_received = 0
-        self.total_receive_errors = 0
-        self.startup_time = time.time()
+    attr_accessor :seq, :file, :srcSystem, :srcComponent, :callback, :callback_args, :callback_kwargs, :send_callback, :send_callback_args, :send_callback_kwargs, :buf, :expected_length, :have_prefix_error, :robust_parsing, :protocol_marker, :little_endian, :crc_extra, :sort_fields, :total_packets_sent, :total_packets_received, :total_bytes_received, :total_receive_errors, :startup_time
+    def initialize(file, srcSystem = 0, srcComponent = 0)
+        @seq = 0
+        @file = file
+        @srcSystem = srcSystem
+        @srcComponent = srcComponent
+        @callback = nil
+        @callback_args = nil
+        @callback_kwargs = nil
+        @send_callback = nil
+        @send_callback_args = nil
+        @send_callback_kwargs = nil
+        @buf = array.array('B')
+        @expected_length = 6
+        @have_prefix_error = false
+        @robust_parsing = false
+        @protocol_marker = ${protocol_marker}
+        @little_endian = ${little_endian}
+        @crc_extra = ${crc_extra}
+        @sort_fields = ${sort_fields}
+        @total_packets_sent = 0
+        @total_bytes_sent = 0
+        @total_packets_received = 0
+        @total_bytes_received = 0
+        @total_receive_errors = 0
+        @startup_time = time.time()
     end
 
-    def set_callback(self, callback, *args, **kwargs):
-        self.callback = callback
-        self.callback_args = args
-        self.callback_kwargs = kwargs
+    def set_callback(callback, *args, **kwargs)
+        @callback = callback
+        @callback_args = args
+        @callback_kwargs = kwargs
     end
 
-    def set_send_callback(self, callback, *args, **kwargs):
-        self.send_callback = callback
-        self.send_callback_args = args
-        self.send_callback_kwargs = kwargs
+    def set_send_callback(callback, *args, **kwargs)
+        @send_callback = callback
+        @send_callback_args = args
+        @send_callback_kwargs = kwargs
     end
             
-    def send(self, mavmsg):
+    def send(mavmsg)
         # send a MAVLink message
         buf = mavmsg.pack(self)
-        self.file.write(buf)
-        self.seq = (self.seq + 1) % 255
-        self.total_packets_sent += 1
-        self.total_bytes_sent += len(buf)
-        if self.send_callback:
-            self.send_callback(mavmsg, *self.send_callback_args, **self.send_callback_kwargs)
-        end
+        @file.write(buf)
+        @seq = (@seq + 1) % 255
+        @total_packets_sent += 1
+        @total_bytes_sent += buf.length
+        @send_callback(mavmsg, *self.send_callback_args, **self.send_callback_kwargs) if @send_callback
     end
 
-    def bytes_needed(self):
+    def bytes_needed
         # return number of bytes needed for next parsing stage
-        ret = self.expected_length - len(self.buf)
-        if ret <= 0:
-            return 1
+        ret = @expected_length - @buf.length
+        ret <= 0 ? return 1 : return ret
+    end
+
+    def parse_char(c)
+        # input some data bytes, possibly returning a new message
+        if isinstance(c, str)
+            @buf.fromstring(c)
+        else
+            @buf.extend(c)
+        end
+        @total_bytes_received += c.lengt
+        if @buf.length >= 1 and @buf[0] != ${protocol_marker}
+            magic = @buf[0]
+            @buf = @buf[1,@buf.length]
+            if @robust_parsing
+                m = MAVLink_bad_data(magic.chr, "Bad prefix")
+                @callback(m, *self.callback_args, **self.callback_kwargs) if @callback 
+                @expected_length = 6
+                @total_receive_errors += 1
+                return m
+            end
+            return nil @have_prefix_error
+            @have_prefix_error = true
+            @total_receive_errors += 1
+            raise MAVError("invalid MAVLink prefix '%s'" % magic) 
+        end
+        @have_prefix_error = False
+        if @buf.length >= 2
+            (magic, @expected_length) = struct.unpack('BB', @buf[0,2])
+            @expected_length += 8
+        end
+        if @expected_length >= 8 and @buf.length >= @expected_length
+            mbuf = @buf[0,@expected_length]
+            @buf = @buf[self.expected_length,@buf.length]
+            @expected_length = 6
+            if @robust_parsing
+                try:
+                    m = decode(mbuf)
+                    @total_packets_received += 1
+                except MAVError as reason:
+                    m = MAVLink_bad_data(mbuf, reason.message)
+                    @total_receive_errors += 1
+            else
+                m = decode(mbuf)
+                @total_packets_received += 1
+            end
+            @callback(m, *@callback_args, **@callback_kwargs) if @callback
+            return m
+        end
+        return nil
+    end
+
+    def parse_buffer(s)
+        # input some data bytes, possibly returning a list of new messages
+        m = parse_char(s)
+        return nil if m.nil?
+        ret = [m]
+        while true
+            m = parse_char("")
+            break if m.nil?
+            ret.append(m)
         end
         return ret
     end
 
-        def parse_char(self, c)
-            # input some data bytes, possibly returning a new message
-            if isinstance(c, str)
-                self.buf.fromstring(c)
-            else
-                self.buf.extend(c)
-            end
-            self.total_bytes_received += len(c)
-            if len(self.buf) >= 1 and self.buf[0] != ${protocol_marker}:
-                magic = self.buf[0]
-                self.buf = self.buf[1:]
-                if self.robust_parsing
-                    m = MAVLink_bad_data(chr(magic), "Bad prefix")
-                    if self.callback:
-                        self.callback(m, *self.callback_args, **self.callback_kwargs)
-                    self.expected_length = 6
-                    self.total_receive_errors += 1
-                    return m
-                end
-                if self.have_prefix_error:
-                    return None
-                end
-                self.have_prefix_error = True
-                self.total_receive_errors += 1
-                raise MAVError("invalid MAVLink prefix '%s'" % magic) 
-            self.have_prefix_error = False
-            if len(self.buf) >= 2:
-                (magic, self.expected_length) = struct.unpack('BB', self.buf[0:2])
-                self.expected_length += 8
-            end
-            if self.expected_length >= 8 and len(self.buf) >= self.expected_length:
-                mbuf = self.buf[0:self.expected_length]
-                self.buf = self.buf[self.expected_length:]
-                self.expected_length = 6
-                if self.robust_parsing:
-                    try:
-                        m = self.decode(mbuf)
-                        self.total_packets_received += 1
-                    except MAVError as reason:
-                        m = MAVLink_bad_data(mbuf, reason.message)
-                        self.total_receive_errors += 1
-                else:
-                    m = self.decode(mbuf)
-                    self.total_packets_received += 1
-                end
-                if self.callback:
-                    self.callback(m, *self.callback_args, **self.callback_kwargs)
-                end
-                return m
-            end
-            return None
+    def decode(msgbuf)
+        # decode a buffer as a MAVLink message
+        # decode the header
+        try:
+            magic, mlen, seq, srcSystem, srcComponent, msgId = struct.unpack('cBBBBB', msgbuf[:6])
+        except struct.error as emsg:
+            raise MAVError('Unable to unpack MAVLink header: %s' % emsg)
+        end
+        if ord(magic) != ${protocol_marker}:
+            raise MAVError("invalid MAVLink prefix '%s'" % magic)
+        end
+        if mlen != len(msgbuf)-8:
+            raise MAVError('invalid MAVLink message length. Got %u expected %u, msgId=%u' % (len(msgbuf)-8, mlen, msgId))
         end
 
-        def parse_buffer(self, s):
-            # input some data bytes, possibly returning a list of new messages
-            m = self.parse_char(s)
-            if m is None:
-                return None
-            end
-            ret = [m]
-            while True:
-                m = self.parse_char("")
-                if m is None:
-                    return ret
-                ret.append(m)
-            end
-            return ret
+        if not msgId in mavlink_map:
+            raise MAVError('unknown MAVLink message ID %u' % msgId)
         end
 
-        def decode(self, msgbuf):
-                # decode a buffer as a MAVLink message
-                # decode the header
-                try:
-                    magic, mlen, seq, srcSystem, srcComponent, msgId = struct.unpack('cBBBBB', msgbuf[:6])
-                except struct.error as emsg:
-                    raise MAVError('Unable to unpack MAVLink header: %s' % emsg)
-                if ord(magic) != ${protocol_marker}:
-                    raise MAVError("invalid MAVLink prefix '%s'" % magic)
-                if mlen != len(msgbuf)-8:
-                    raise MAVError('invalid MAVLink message length. Got %u expected %u, msgId=%u' % (len(msgbuf)-8, mlen, msgId))
+        # decode the payload
+        (fmt, type, order_map, crc_extra) = mavlink_map[msgId]
 
-                if not msgId in mavlink_map:
-                    raise MAVError('unknown MAVLink message ID %u' % msgId)
+        # decode the checksum
+        try:
+            crc, = struct.unpack('<H', msgbuf[-2:])
+        except struct.error as emsg:
+            raise MAVError('Unable to unpack MAVLink CRC: %s' % emsg)
+        end
+        crc2 = X25CRC(msgbuf[1:-2])
+        if ${crc_extra}: # using CRC extra 
+            crc2.accumulate(chr(crc_extra))
+        end
+        if crc != crc2.crc:
+            raise MAVError('invalid MAVLink CRC in msgID %u 0x%04x should be 0x%04x' % (msgId, crc, crc2.crc))
+        end
 
-                # decode the payload
-                (fmt, type, order_map, crc_extra) = mavlink_map[msgId]
+        try:
+            t = struct.unpack(fmt, msgbuf[6:-2])
+        except struct.error as emsg:
+            raise MAVError('Unable to unpack MAVLink payload type=%s fmt=%s payloadLength=%u: %s' % (
+                type, fmt, len(msgbuf[6:-2]), emsg))
+        end
 
-                # decode the checksum
-                try:
-                    crc, = struct.unpack('<H', msgbuf[-2:])
-                except struct.error as emsg:
-                    raise MAVError('Unable to unpack MAVLink CRC: %s' % emsg)
-                crc2 = X25CRC(msgbuf[1:-2])
-                if ${crc_extra}: # using CRC extra 
-                    crc2.accumulate(chr(crc_extra))
-                if crc != crc2.crc:
-                    raise MAVError('invalid MAVLink CRC in msgID %u 0x%04x should be 0x%04x' % (msgId, crc, crc2.crc))
-
-                try:
-                    t = struct.unpack(fmt, msgbuf[6:-2])
-                except struct.error as emsg:
-                    raise MAVError('Unable to unpack MAVLink payload type=%s fmt=%s payloadLength=%u: %s' % (
-                        type, fmt, len(msgbuf[6:-2]), emsg))
-
-                tlist = list(t)
-                # handle sorted fields
-                if ${sort_fields}:
-                    t = tlist[:]
-                    for i in range(0, len(tlist)):
-                        tlist[i] = t[order_map[i]]
-
-                # terminate any strings
-                for i in range(0, len(tlist)):
-                    if isinstance(tlist[i], str):
-                        tlist[i] = MAVString(tlist[i])
-                t = tuple(tlist)
-                # construct the message object
-                try:
-                    m = type(*t)
-                except Exception as emsg:
-                    raise MAVError('Unable to instantiate MAVLink message of type %s : %s' % (type, emsg))
-                m._msgbuf = msgbuf
-                m._payload = msgbuf[6:-2]
-                m._crc = crc
-                m._header = MAVLink_header(msgId, mlen, seq, srcSystem, srcComponent)
-                return m
+        tlist = list(t)
+        # handle sorted fields
+        if ${sort_fields}:
+            t = tlist[:]
+            for i in range(0, len(tlist)):
+                tlist[i] = t[order_map[i]]
             end
+        end
+
+        # terminate any strings
+        for i in range(0, len(tlist)):
+            if isinstance(tlist[i], str):
+                tlist[i] = MAVString(tlist[i])
+            end
+        end
+        t = tuple(tlist)
+        # construct the message object
+        try:
+            m = type(*t)
+        except Exception as emsg:
+            raise MAVError('Unable to instantiate MAVLink message of type %s : %s' % (type, emsg))
+        end
+        m._msgbuf = msgbuf
+        m._payload = msgbuf[6:-2]
+        m._crc = crc
+        m._header = MAVLink_header(msgId, mlen, seq, srcSystem, srcComponent)
+        return m
+    end\n
 """, xml)
 
 def generate_methods(outf, msgs):
@@ -485,7 +480,7 @@ def generate_methods(outf, msgs):
     def field_descriptions(fields):
         ret = ""
         for f in fields:
-            ret += "                #%-18s        : %s (%s)\n" % (f.name, f.description.strip(), f.type)
+            ret += "        #%-18s        : %s (%s)\n" % (f.name, f.description.strip(), f.type)
         return ret
 
     wrapper = textwrap.TextWrapper()
@@ -494,7 +489,7 @@ def generate_methods(outf, msgs):
     for m in msgs:
         comment = "#%s\n\n%s" % (wrapper.fill(m.description.strip()), field_descriptions(m.fields))
 
-        selffieldnames = 'self, '
+        selffieldnames = ''
         for f in m.fields:
             if f.omit_arg:
                 selffieldnames += '%s=%s, ' % (f.name, f.const_value)
@@ -508,20 +503,20 @@ def generate_methods(outf, msgs):
                'FIELDNAMES'     : ", ".join(m.fieldnames)}
 
         t.write(outf, """
-        def ${NAMELOWER}_encode(${SELFFIELDNAMES})
-            ${COMMENT}
-            msg = MAVLink_${NAMELOWER}_message(${FIELDNAMES})
-            msg.pack(self)
-            return msg
-        end
+    def ${NAMELOWER}_encode(${SELFFIELDNAMES})
+        ${COMMENT}
+        msg = MAVLink_${NAMELOWER}_message(${FIELDNAMES})
+        msg.pack
+        return msg
+    end
             
 """, sub)
 
         t.write(outf, """
-        def ${NAMELOWER}_send(${SELFFIELDNAMES})
-            ${COMMENT}
-            return self.send(self.${NAMELOWER}_encode(${FIELDNAMES}))
-        end
+    def ${NAMELOWER}_send(${SELFFIELDNAMES})
+        ${COMMENT}
+        return send(${NAMELOWER}_encode(${FIELDNAMES}))
+    end
             
 """, sub)
     t.write(outf,"end\n")
