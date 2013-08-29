@@ -11,6 +11,7 @@ pymavlink/generator/C/
 pymavlink/generator/C/
 pymavlink/generator/python/
 pymavlink/generator/python/
+pymavlink/generator/ruby/
 apidocs/
 pymavlink/generator/message_definitions
 *.swp

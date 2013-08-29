@@ -6,6 +6,8 @@ for protocol in 0.9 1.0; do
      ./mavgen.py --lang=C --wire-protocol=$protocol --output=C/include_v$protocol $xml || exit 1
      mkdir -p python
      ./mavgen.py --lang=Python --wire-protocol=$protocol --output=python/mavlink_${base}_v$protocol.py $xml || exit 1
+     mkdir -p ruby
+     ./mavgen.py --lang=Ruby --wire-protocol=$protocol --output=ruby/mavlink_${base}_v$protocol.rb $xml || exit 1
  done
 done
 
