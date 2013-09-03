@@ -408,55 +408,49 @@ class MAVLink
         raise MAVError.new("unknown MAVLink message ID #{msgId}") if !mavlink_map.has_key?(msgId)
 
         # decode the payload
-        (fmt, type, order_map, crc_extra) = mavlink_map[msgId]
+        message = mavlink_map[msgId]
 
         # decode the checksum
-        try:
+        begin
             crc, = struct.unpack('<H', msgbuf[-2:])
-        except struct.error as emsg:
-            raise MAVError('Unable to unpack MAVLink CRC: %s' % emsg)
-        end
-        crc2 = X25CRC(msgbuf[1:-2])
-        if ${crc_extra}: # using CRC extra 
-            crc2.accumulate(chr(crc_extra))
-        end
-        if crc != crc2.crc:
-            raise MAVError('invalid MAVLink CRC in msgID %u 0x%04x should be 0x%04x' % (msgId, crc, crc2.crc))
+        rescue Exception => ex
+            raise MAVError.new("Unable to unpack MAVLink CRC: #{ex.inspect}")
         end
 
-        try:
-            t = struct.unpack(fmt, msgbuf[6:-2])
-        except struct.error as emsg:
-            raise MAVError('Unable to unpack MAVLink payload type=%s fmt=%s payloadLength=%u: %s' % (
-                type, fmt, len(msgbuf[6:-2]), emsg))
+        crc2 = X25CRC.new(msgbuf[1...-2])
+        crc2.accumulate(chr(message[:crc_extra])) if ${crc_extra}: # using CRC extra
+        raise MAVError.new("invalid MAVLink CRC in msgID %u 0x%04x should be 0x%04x" % (msgId, crc, crc2.crc)) if crc != crc2.crc
+
+        begin
+            t = struct.unpack(message[:fmt], msgbuf[6...-2])
+        rescue Exception => ex
+            raise MAVError('Unable to unpack MAVLink payload message[:type]=%s message[:fmt]=%s payloadLength=%u: %s' % (message[:type], message[:fmt],msgbuf[6...-2].length, ex.inspect))
         end
 
         tlist = list(t)
         # handle sorted fields
-        if ${sort_fields}:
-            t = tlist[:]
-            for i in range(0, len(tlist)):
-                tlist[i] = t[order_map[i]]
+        if ${sort_fields}
+            t = tlist
+            tlist.each_with_index do |n, i|
+                tlist[i] = t[message[:order_map][i]]
             end
         end
 
         # terminate any strings
-        for i in range(0, len(tlist)):
-            if isinstance(tlist[i], str):
-                tlist[i] = MAVString(tlist[i])
-            end
+        tlist.each_with_index do |n, i|
+            tlist[i] = MAVString.new(tlist[i]) if tlist[i].class == String
         end
         t = tuple(tlist)
         # construct the message object
         try:
             m = type(*t)
         except Exception as emsg:
-            raise MAVError('Unable to instantiate MAVLink message of type %s : %s' % (type, emsg))
+            raise MAVError('Unable to instantiate MAVLink message of message[:type] %s : %s' % (message[:type], emsg))
         end
-        m._msgbuf = msgbuf
-        m._payload = msgbuf[6:-2]
-        m._crc = crc
-        m._header = MAVLink_header(msgId, mlen, seq, srcSystem, srcComponent)
+        m.msgbuf = msgbuf
+        m.payload = msgbuf[6...-2]
+        m.crc = crc
+        m.header = MAVLink_header.new(msgId, mlen, seq, srcSystem, srcComponent)
         return m
     end\n
 """, xml)
@@ -492,7 +486,7 @@ def generate_methods(outf, msgs):
         t.write(outf, """
     def ${NAMELOWER}_encode(${SELFFIELDNAMES})
         ${COMMENT}
-        msg = MAVLink_${NAMELOWER}_message(${FIELDNAMES})
+        msg = MAVLink_${NAMELOWER}_message.new(${FIELDNAMES})
         msg.pack
         return msg
     end
