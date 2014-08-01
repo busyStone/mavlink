@@ -25,6 +25,8 @@ package mavlink
 const MAVLINK_BUILD_DATE = "${parse_time}"
 const MAVLINK_WIRE_PROTOCOL_VERSION = "${wire_protocol_version}"
 const MAVLINK_MAX_DIALECT_PAYLOAD_SIZE = ${largest_payload} 
+const MAVLINK_VERSION = ${version}
+
 ''', xml)
     f.close()
 
@@ -42,8 +44,8 @@ package mavlink
 import (
   "bytes"
   "encoding/binary"
+  "errors"
   "io"
-  "time"
 )
 
 const MAVLINK_BIG_ENDIAN = 0
@@ -54,7 +56,6 @@ const MAVLINK_ALIGNED_FIELDS = ${aligned_fields_define}
 const MAVLINK_CRC_EXTRA = ${crc_extra_define}
 const X25_INIT_CRC = 0xffff
 const X25_VALIDATE_CRC = 0xf0b8
-
 
 var sequence uint16 = 0
 
@@ -82,16 +83,28 @@ type MAVLinkPacket struct {
         Checksum    uint16
 }
 
-func ReadMAVLinkPacket(r io.Reader) *MAVLinkPacket {
+func ReadMAVLinkPacket(r io.Reader) (*MAVLinkPacket, error) {
         for {
-                header := read(r, 1)[0]
-                if header == 254 {
-                        length := read(r, 1)[0]
-                        m := &MAVLinkPacket{}
-                        m.Decode(append([]byte{header, length}, read(r, length+7)...))
-                        return m
+                header, err := read(r, 1)
+                if err != nil {
+                        return nil, err
                 }
-                <-time.After(10 * time.Millisecond)
+                if header[0] == 254 {
+                        length, err := read(r, 1)
+                        if err != nil {
+                                return nil, err
+                        } else if length[0] > 250 {
+                                continue
+                        }
+                        m := &MAVLinkPacket{}
+                        data, err := read(r, int(length[0])+7)
+                        if err != nil {
+                                return nil, err
+                        }
+                        data = append([]byte{header[0], length[0]}, data...)
+                        m.Decode(data)
+                        return m, nil
+                }
         }
 }
 
@@ -121,7 +134,7 @@ func NewMAVLinkPacket(Protocol uint8, Length uint8, Sequence uint8, SystemID uin
         return m
 }
 
-func (m *MAVLinkPacket) MAVLinkMessage() MAVLinkMessage {
+func (m *MAVLinkPacket) MAVLinkMessage() (MAVLinkMessage, error) {
         return NewMAVLinkMessage(m.MessageID, m.Data)
 }
 
@@ -145,22 +158,27 @@ func (m *MAVLinkPacket) Decode(buf []byte) {
         m.SystemID = buf[3]
         m.ComponentID = buf[4]
         m.MessageID = buf[5]
-        m.Data = buf[6 : 6+m.Length]
-        checksum := buf[7+m.Length:]
+        m.Data = buf[6 : 6+int(m.Length)]
+        checksum := buf[7+int(m.Length):]
         m.Checksum = uint16(checksum[1])<<8 | uint16(checksum[0])
 }
 
-func read(r io.Reader, length uint8) []byte {
+func read(r io.Reader, length int) ([]byte, error) {
         buf := make([]byte, length)
-        r.Read(buf[:])
-        return buf
+        i, err := r.Read(buf[:])
+        if err != nil {
+                return nil, err
+        } else if i != length {
+                return nil, errors.New("Not Enough Bytes Read!")
+        }
+        return buf, nil
 }
 
 /**
  * @brief Accumulate the X.25 CRC by adding one char at a time.
  *
  * The checksum function adds the hash of one char at a time to the
- * 16 bit checksum (uint16_t).
+ * 16 bit checksum (uint16).
  *
  * @param data to hash
  * @param crcAccum the already accumulated checksum
@@ -194,9 +212,11 @@ func crcCalculate(m *MAVLinkPacket) uint16 {
         for _, v := range m.Pack()[1 : m.Length+6] {
                 crc = crcAccumulate(v, crc)
         }
-        crc = crcAccumulate(m.MAVLinkMessage().Crc(), crc)
+        message, _ := m.MAVLinkMessage()
+        crc = crcAccumulate(message.Crc(), crc)
         return crc
 }
+
 ''', xml)
     f.close()
 
@@ -210,22 +230,25 @@ package mavlink
  *	@brief MAVLink comm protocol generated from ${basename}.xml
  *	@see http://qgroundcontrol.org/mavlink/
  */
-
 import (
   "bytes"
   "encoding/binary"
+  "errors"
+  "fmt"
 )
-
 
 var messages = map[uint8]MAVLinkMessage{
     ${{message:${id}: &${name_camel_case}{},
     }}
   }
 
-func NewMAVLinkMessage(msgid uint8, data []byte) MAVLinkMessage {
+func NewMAVLinkMessage(msgid uint8, data []byte) (MAVLinkMessage, error) {
   message := messages[msgid]
-  message.Decode(data)
-  return message
+  if message != nil {
+    message.Decode(data)
+    return message, nil
+  }
+  return nil, errors.New(fmt.Sprintf("Unknown Message ID: %v", msgid))
 }
 
 ${{enum:
@@ -235,9 +258,6 @@ ${{entry:const ${name}=${value} /* ${description} |${{param:${description}| }} *
 }}
 }}
 
-// MAVLINK VERSION
-const MAVLINK_VERSION = ${version}
-
 ''', xml)
 
     f.close()
@@ -246,7 +266,6 @@ const MAVLINK_VERSION = ${version}
 def generate_message_h(directory, m):
     '''generate per-message header for a XML file'''
     f = open(os.path.join(directory, m.basename + ".go"), mode='a')
-    #f = open(os.path.join(directory, 'mavlink_msg_%s.go' % m.name_lower), mode='w')
     t.write(f, '''
 // MESSAGE ${name}
 
@@ -290,8 +309,6 @@ func (m *${name_camel_case}) Decode(buf []byte) {
   ${{ordered_fields: binary.Read(data, binary.LittleEndian, &m.${name_upper})
 }}
 }
-
-
 
 ${{array_fields:const MAVLINK_MSG_${msg_name}_FIELD_${name}_LEN = ${array_length}
 }}
@@ -494,7 +511,22 @@ def to_go_type(field):
 def generate(basename, xml_list):
     '''generate complete MAVLink Go implemenation'''
 
-    for xml in xml_list:
-        generate_one(basename, xml)
+    #for x in xml_list:
+#   x.message.extend(x.message)
+#       x.enum.extend(x.enum)
+#        filelist.append(os.path.basename(x.filename))
+#        print("x.filename " + x.filename)
+
+    #for xml in xml_list:
+    msgs = []
+    enums = []
+    for x in xml_list:
+        msgs.extend(x.message)
+        enums.extend(x.enum)
+
+    xml_list[0].message = msgs
+    xml_list[0].enum = enums
+
+    generate_one(basename, xml_list[0])
     copy_fixed_headers(basename, xml_list[0])
     #copy_fixed_sources(basename, xml_list[0])
