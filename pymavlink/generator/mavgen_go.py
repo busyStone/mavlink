@@ -17,15 +17,17 @@ def generate_version_h(directory, xml):
     t.write(f,'''
 package mavlink
 
-/** @file
- *	@brief MAVLink comm protocol built from ${basename}.xml
- *	@see http://pixhawk.ethz.ch/software/mavlink
- */
+//
+// MAVLink comm protocol built from ${basename}.xml
+// http://pixhawk.ethz.ch/software/mavlink
+//
 
-const MAVLINK_BUILD_DATE = "${parse_time}"
-const MAVLINK_WIRE_PROTOCOL_VERSION = "${wire_protocol_version}"
-const MAVLINK_MAX_DIALECT_PAYLOAD_SIZE = ${largest_payload} 
-const MAVLINK_VERSION = ${version}
+const (
+MAVLINK_BUILD_DATE = "${parse_time}"
+MAVLINK_WIRE_PROTOCOL_VERSION = "${wire_protocol_version}"
+MAVLINK_MAX_DIALECT_PAYLOAD_SIZE = ${largest_payload} 
+MAVLINK_VERSION = ${version}
+)
 
 ''', xml)
     f.close()
@@ -36,10 +38,10 @@ def generate_mavlink_h(directory, xml):
     t.write(f,'''
 package mavlink
 
-/** @file
- *	@brief MAVLink comm protocol built from ${basename}.xml
- *	@see http://pixhawk.ethz.ch/software/mavlink
- */
+// 
+// MAVLink comm protocol built from ${basename}.xml
+// http://pixhawk.ethz.ch/software/mavlink
+//
 
 import (
     "bytes"
@@ -48,14 +50,16 @@ import (
     "time"
 )
 
-const MAVLINK_BIG_ENDIAN = 0
-const MAVLINK_LITTLE_ENDIAN = 1
-const MAVLINK_STX = ${protocol_marker}
-const MAVLINK_ENDIAN = ${mavlink_endian}
-const MAVLINK_ALIGNED_FIELDS = ${aligned_fields_define}
-const MAVLINK_CRC_EXTRA = ${crc_extra_define}
-const X25_INIT_CRC = 0xffff
-const X25_VALIDATE_CRC = 0xf0b8
+const (
+MAVLINK_BIG_ENDIAN = 0
+MAVLINK_LITTLE_ENDIAN = 1
+MAVLINK_STX = ${protocol_marker}
+MAVLINK_ENDIAN = ${mavlink_endian}
+MAVLINK_ALIGNED_FIELDS = ${aligned_fields_define}
+MAVLINK_CRC_EXTRA = ${crc_extra_define}
+X25_INIT_CRC = 0xffff
+X25_VALIDATE_CRC = 0xf0b8
+)
 
 var sequence uint16 = 0
 
@@ -64,6 +68,7 @@ func generateSequence() uint8 {
         return uint8(sequence)
 }
 
+// The MAVLinkMessage interface is implemented by MAVLink messages 
 type MAVLinkMessage interface {
         Id() uint8
         Len() uint8
@@ -72,6 +77,7 @@ type MAVLinkMessage interface {
         Decode([]byte)
 }
 
+// A MAVLinkPacket represents a raw packet received from a micro air vehicle
 type MAVLinkPacket struct {
         Protocol    uint8
         Length      uint8
@@ -83,6 +89,8 @@ type MAVLinkPacket struct {
         Checksum    uint16
 }
 
+// ReadMAVLinkPacket reads an io.Reader for a new packet and returns a new MAVLink packet 
+// or returns the error received by the io.Reader
 func ReadMAVLinkPacket(r io.Reader) (*MAVLinkPacket, error) {
         for {
                 header, err := read(r, 1)
@@ -108,6 +116,7 @@ func ReadMAVLinkPacket(r io.Reader) (*MAVLinkPacket, error) {
         }
 }
 
+// CraftMAVLinkPacket returns a new MAVLinkPacket from a MAVLinkMessage
 func CraftMAVLinkPacket(SystemID uint8, ComponentID uint8, Message MAVLinkMessage) *MAVLinkPacket {
         return NewMAVLinkPacket(
                 0xFE,
@@ -120,6 +129,7 @@ func CraftMAVLinkPacket(SystemID uint8, ComponentID uint8, Message MAVLinkMessag
         )
 }
 
+// NewMAVLinkPacket returns a new MAVLinkPacket
 func NewMAVLinkPacket(Protocol uint8, Length uint8, Sequence uint8, SystemID uint8, ComponentID uint8, MessageID uint8, Data []uint8) *MAVLinkPacket {
         m := &MAVLinkPacket{
                 Protocol:    Protocol,
@@ -134,10 +144,13 @@ func NewMAVLinkPacket(Protocol uint8, Length uint8, Sequence uint8, SystemID uin
         return m
 }
 
+// MAVLinkMessage returns the decoded MAVLinkMessage from the MAVLinkPacket
+// or returns an error generated from the MAVLinkMessage
 func (m *MAVLinkPacket) MAVLinkMessage() (MAVLinkMessage, error) {
         return NewMAVLinkMessage(m.MessageID, m.Data)
 }
 
+// Pack returns a packed byte array which represents the MAVLinkPacket
 func (m *MAVLinkPacket) Pack() []byte {
         data := new(bytes.Buffer)
         binary.Write(data, binary.LittleEndian, m.Protocol)
@@ -151,6 +164,7 @@ func (m *MAVLinkPacket) Pack() []byte {
         return data.Bytes()
 }
 
+// Decode accepts a packed byte array and populates the fields of the MAVLinkPacket
 func (m *MAVLinkPacket) Decode(buf []byte) {
         m.Protocol = buf[0]
         m.Length = buf[1]
@@ -183,15 +197,15 @@ func read(r io.Reader, length int) ([]byte, error) {
 	return buf, nil
 }
 
-/**
- * @brief Accumulate the X.25 CRC by adding one char at a time.
- *
- * The checksum function adds the hash of one char at a time to the
- * 16 bit checksum (uint16).
- *
- * @param data to hash
- * @param crcAccum the already accumulated checksum
- **/
+// 
+// Accumulate the X.25 CRC by adding one char at a time.
+// 
+// The checksum function adds the hash of one char at a time to the
+// 16 bit checksum (uint16).
+// 
+// data to hash
+// crcAccum the already accumulated checksum
+//
 func crcAccumulate(data uint8, crcAccum uint16) uint16 {
         /*Accumulate one byte of data into the CRC*/
         var tmp uint8
@@ -202,19 +216,18 @@ func crcAccumulate(data uint8, crcAccum uint16) uint16 {
         return crcAccum
 }
 
-/**
- * @brief Initiliaze the buffer for the X.25 CRC
- *
- */
+//
+// Initiliaze the buffer for the X.25 CRC
+//
 func crcInit() uint16 {
         return X25_INIT_CRC
 }
 
-/**
- * @brief Calculates the X.25 checksum on a byte buffer
- *
- * @return the checksum over the buffer bytes
- **/
+//
+// Calculates the X.25 checksum on a byte buffer
+//
+// return the checksum over the buffer bytes
+//
 func crcCalculate(m *MAVLinkPacket) uint16 {
         crc := crcInit()
 
@@ -235,10 +248,10 @@ def generate_main_h(directory, xml):
     t.write(f, '''
 package mavlink
 
-/** @file
- *	@brief MAVLink comm protocol generated from ${basename}.xml
- *	@see http://qgroundcontrol.org/mavlink/
- */
+// 
+// MAVLink comm protocol generated from ${basename}.xml
+// http://qgroundcontrol.org/mavlink/
+// 
 import (
   "bytes"
   "encoding/binary"
@@ -251,6 +264,7 @@ var messages = map[uint8]MAVLinkMessage{
     }}
   }
 
+// NewMAVLinkMessage returns a new MAVLinkMessage or an error if it encounters an unknown Message ID
 func NewMAVLinkMessage(msgid uint8, data []byte) (MAVLinkMessage, error) {
   message := messages[msgid]
   if message != nil {
@@ -261,10 +275,14 @@ func NewMAVLinkMessage(msgid uint8, data []byte) (MAVLinkMessage, error) {
 }
 
 ${{enum:
-/** @brief ${description} */
+//
 // ${name}
-${{entry:const ${name}=${value} /* ${description} |${{param:${description}| }} */
+/*${description}*/
+//
+const (
+${{entry:${name}=${value} // ${description} | ${{param:${description} | }}
 }}
+)
 }}
 
 ''', xml)
@@ -276,36 +294,45 @@ def generate_message_h(directory, m):
     '''generate per-message header for a XML file'''
     f = open(os.path.join(directory, m.basename + ".go"), mode='a')
     t.write(f, '''
+//
 // MESSAGE ${name}
-
+//
 // MAVLINK_MSG_ID_${name} ${id}
+//
 // MAVLINK_MSG_ID_${name}_LEN ${wire_length}
+//
 // MAVLINK_MSG_ID_${name}_CRC ${crc_extra}
-
+//
+//
 type ${name_camel_case} struct {
-${{ordered_fields: ${name_upper} ${array_suffix}${type}  ///< ${description}
+${{ordered_fields: ${name_upper} ${array_suffix}${type}  // ${description}
 }}
 } 
 
-func New${name_camel_case}(${{ordered_fields: ${name_upper} ${array_suffix}${type},}}) MAVLinkMessage {
+// New${name_camel_case} returns a new ${name_camel_case} 
+func New${name_camel_case}(${{ordered_fields: ${name_upper} ${array_suffix}${type},}}) *${name_camel_case} {
   m := ${name_camel_case}{}
   ${{ordered_fields: m.${name_upper} = ${name_upper}
 }}
   return &m
 }
 
+// Id returns the ${name_camel_case} Message ID 
 func (*${name_camel_case}) Id() uint8 {
     return ${id}
 }
 
+// Len returns the ${name_camel_case} Message Length
 func (*${name_camel_case}) Len() uint8 {
     return ${wire_length}
 }
 
+// Crc returns the ${name_camel_case} Message CRC
 func (*${name_camel_case}) Crc() uint8 {
     return ${crc_extra}
 }
 
+// Pack returns a packed byte array which represents a ${name_camel_case} payload
 func (m *${name_camel_case}) Pack() []byte {
   data := new(bytes.Buffer)
   ${{ordered_fields: binary.Write(data, binary.LittleEndian, m.${name_upper})
@@ -313,14 +340,17 @@ func (m *${name_camel_case}) Pack() []byte {
   return data.Bytes()
 }
 
+// Decode accepts a packed byte array and populates the fields of the ${name_camel_case}
 func (m *${name_camel_case}) Decode(buf []byte) {
   data := bytes.NewBuffer(buf)
   ${{ordered_fields: binary.Read(data, binary.LittleEndian, &m.${name_upper})
 }}
 }
 
-${{array_fields:const MAVLINK_MSG_${msg_name}_FIELD_${name}_LEN = ${array_length}
+const (
+${{array_fields:MAVLINK_MSG_${msg_name}_FIELD_${name}_LEN = ${array_length}
 }}
+)
 ''', m)
     f.close()
 
